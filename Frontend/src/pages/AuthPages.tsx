@@ -24,8 +24,8 @@ function PasswordInput({ value, onChange }: { value: string; onChange: (value: s
 export function LoginPage() {
   const { user, login } = useAuth()
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  if (user) { location.replace(user.role === 'Admin' ? '/admin' : '/app'); return null }
-  const submit = async (e: FormEvent) => { e.preventDefault(); setError(''); setBusy(true); try { const result = await login(email, password); location.assign(result.role === 'Admin' ? '/admin' : '/app') } catch (ex) { setError((ex as Error).message) } finally { setBusy(false) } }
+  if (user) { location.replace(user.role === 'Admin' ? '/admin' : '/app/orders'); return null }
+  const submit = async (e: FormEvent) => { e.preventDefault(); setError(''); setBusy(true); try { const result = await login(email, password); location.assign(result.role === 'Admin' ? '/admin' : '/app/orders') } catch (ex) { setError((ex as Error).message) } finally { setBusy(false) } }
   return <AuthFrame title="欢迎回来" subtitle="登录后查看历史充值和继续未完成订单">
     <form onSubmit={submit} className="form-stack"><label>邮箱地址<input type="email" placeholder="name@example.com" value={email} onChange={e => setEmail(e.target.value)} required /></label><label>登录密码<PasswordInput value={password} onChange={setPassword} /></label>{error && <div className="form-error">{error}</div>}<button className="primary-button" disabled={busy}>{busy ? '正在登录…' : <>登录账户 <ArrowRight size={17} /></>}</button></form>
     <p className="auth-switch">还没有账户？<a href="/register">免费注册</a></p>
@@ -35,8 +35,8 @@ export function LoginPage() {
 export function RegisterPage() {
   const { user, register, login } = useAuth()
   const [form, setForm] = useState({ nickname: '', email: '', password: '' }); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
-  if (user) { location.replace('/app'); return null }
-  const submit = async (e: FormEvent) => { e.preventDefault(); setError(''); setBusy(true); try { await register(form.email, form.password, form.nickname); await login(form.email, form.password); location.assign('/app') } catch (ex) { setError((ex as Error).message) } finally { setBusy(false) } }
+  if (user) { location.replace(user.role === 'Admin' ? '/admin' : '/app/orders'); return null }
+  const submit = async (e: FormEvent) => { e.preventDefault(); setError(''); setBusy(true); try { await register(form.email, form.password, form.nickname); await login(form.email, form.password); location.assign('/app/orders') } catch (ex) { setError((ex as Error).message) } finally { setBusy(false) } }
   return <AuthFrame title="创建账户" subtitle="创建后可统一查看和管理充值订单">
     <form onSubmit={submit} className="form-stack"><label>称呼<input placeholder="例如：小林" value={form.nickname} onChange={e => setForm({ ...form, nickname: e.target.value })} maxLength={100} /></label><label>邮箱地址<input type="email" placeholder="name@example.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required /></label><label>设置密码<PasswordInput value={form.password} onChange={password => setForm({ ...form, password })} /></label>{error && <div className="form-error">{error}</div>}<button className="primary-button" disabled={busy}>{busy ? '正在创建…' : <>创建账户 <ArrowRight size={17} /></>}</button></form>
     <p className="terms">注册即表示你同意平台服务条款和隐私政策。</p><p className="auth-switch">已有账户？<a href="/login">直接登录</a></p>

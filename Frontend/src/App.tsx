@@ -17,6 +17,7 @@ export default function App() {
   if (!user) { location.replace('/login'); return null }
   if (path.startsWith('/admin') && user.role !== 'Admin') { location.replace('/app'); return null }
   if (path === '/app/orders') return <SubscriptionOrdersPage />
+  if (path === '/app' && user.role !== 'Admin') { location.replace('/app/orders'); return null }
 
   const page = path === '/app/recharge' ? <RechargePage />
     : path === '/admin/orders' ? <AdminOrdersPage />

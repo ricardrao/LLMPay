@@ -1,13 +1,11 @@
-import { BarChart3, CircleDollarSign, CreditCard, KeyRound, LayoutDashboard, LogOut, Menu, ReceiptText, TicketCheck, Users, X } from 'lucide-react'
+import { BarChart3, CircleDollarSign, KeyRound, LogOut, Menu, ReceiptText, TicketCheck, Users, X, Zap } from 'lucide-react'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../auth/AuthContext'
 
 const userLinks = [
-  { to: '/app', label: '账户概览', icon: LayoutDashboard, end: true },
-  { to: '/app/recharge', label: '余额充值', icon: CreditCard },
-  { to: '/app/cards', label: 'ChatGPT 充值', icon: TicketCheck },
-  { to: '/app/orders', label: '我的订单', icon: ReceiptText }
+  { to: '/app/cards', label: '充值套餐', icon: TicketCheck, end: false },
+  { to: '/app/orders', label: '充值订单', icon: ReceiptText, end: false }
 ]
 const adminLinks = [
   { to: '/admin', label: '经营概览', icon: BarChart3, end: true },
@@ -20,9 +18,9 @@ export function Shell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
   const [open, setOpen] = useState(false)
   const links = user?.role === 'Admin' ? [...userLinks, ...adminLinks] : userLinks
-  return <div className="app-shell">
+  return <div className={`app-shell ${user?.role === 'Admin' ? 'admin-shell' : 'customer-shell'}`}>
     <aside className={`sidebar ${open ? 'open' : ''}`}>
-      <div className="brand"><span className="brand-mark"><CircleDollarSign size={22} /></span><span>LLM<b>Pay</b></span></div>
+      <div className="brand"><span className="brand-mark">{user?.role === 'Admin' ? <CircleDollarSign size={22} /> : <Zap size={22}/>}</span><span>LLM<b>Pay</b></span></div>
       <button className="mobile-close" onClick={() => setOpen(false)} aria-label="关闭菜单"><X /></button>
       <nav>
         {links.map(({ to, label, icon: Icon, end }) => <a className={(end ? location.pathname === to : location.pathname.startsWith(to)) ? 'active' : ''} key={to} href={to} onClick={() => setOpen(false)}><Icon size={18} />{label}</a>)}
