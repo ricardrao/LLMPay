@@ -136,6 +136,10 @@ public class LlmPayDbContext : DbContext
             entity.Property(e => e.Amount).HasPrecision(18, 2);
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.MockCheckoutSessionId).HasMaxLength(128);
+            entity.Property(e => e.PaymentCodeUrl).HasMaxLength(2048);
+            entity.Property(e => e.PaymentGatewayTradeNo).HasMaxLength(128);
+            entity.Property(e => e.PaymentAmountCny).HasPrecision(18, 2);
+            entity.Property(e => e.PaymentMode).HasMaxLength(32).IsRequired();
             entity.Property(e => e.MockSubscriptionId).HasMaxLength(128);
             entity.Property(e => e.RechargeCodeHash).HasMaxLength(64);
             entity.Property(e => e.RechargeCodeSuffix).HasMaxLength(8);

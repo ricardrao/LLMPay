@@ -61,6 +61,10 @@ builder.Services.AddScoped<RechargeCardService>();
 builder.Services.AddScoped<CardPurchaseService>();
 builder.Services.AddScoped<MockRechargeService>();
 builder.Services.AddDataProtection();
+builder.Services.AddHttpClient<AlipaySandboxGateway>();
+builder.Services.AddHttpClient<WeChatPayV3Gateway>(client => { client.BaseAddress=new Uri("https://api.mch.weixin.qq.com"); client.Timeout=TimeSpan.FromSeconds(30); });
+builder.Services.AddScoped<INativePaymentGateway>(sp=>sp.GetRequiredService<AlipaySandboxGateway>());
+builder.Services.AddScoped<INativePaymentGateway>(sp=>sp.GetRequiredService<WeChatPayV3Gateway>());
 
 // 注册服务
 builder.Services.AddScoped<IUserService, UserService>();

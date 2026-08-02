@@ -15,7 +15,8 @@ public class MockRechargeController : ControllerBase
 {
     private readonly MockRechargeService _service;
     private readonly IWebHostEnvironment _environment;
-    public MockRechargeController(MockRechargeService service, IWebHostEnvironment environment) { _service = service; _environment = environment; }
+    private readonly IConfiguration _configuration;
+    public MockRechargeController(MockRechargeService service, IWebHostEnvironment environment, IConfiguration configuration) { _service = service; _environment = environment; _configuration=configuration; }
 
     [HttpPost("token")]
     public IActionResult GenerateToken(GenerateMockTokenRequest request)
@@ -54,7 +55,11 @@ public class MockRechargeController : ControllerBase
     public async Task<IActionResult> Checkout(Guid id) => await Run(() => _service.CreateCheckoutAsync(UserId(), id, GuestToken()));
 
     [HttpPost("orders/{id:guid}/payment")]
-    public async Task<IActionResult> Payment(Guid id) => await Run(() => _service.ConfirmPaymentAsync(UserId(), id, GuestToken()));
+    public async Task<IActionResult> Payment(Guid id)
+    {
+        if(_configuration.GetValue("Payments:UseGatewaySandbox",false))return Conflict(new{message="网关模式下只能由验签后的支付回调确认付款"});
+        return await Run(() => _service.ConfirmPaymentAsync(UserId(), id, GuestToken()));
+    }
 
     [HttpPost("orders/{id:guid}/verify-card")]
     public async Task<IActionResult> VerifyCard(Guid id, VerifyRechargeCardRequest request)

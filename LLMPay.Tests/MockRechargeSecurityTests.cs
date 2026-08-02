@@ -3,6 +3,8 @@ using LLMPay.Infrastructure.Data;
 using LLMPay.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Configuration;
+using LLMPay.Core.Services;
 
 namespace LLMPay.Tests;
 
@@ -11,7 +13,7 @@ public class MockRechargeSecurityTests
     private static MockRechargeService Service()
     {
         var options = new DbContextOptionsBuilder<LlmPayDbContext>().UseNpgsql("Host=localhost;Database=unused").Options;
-        return new MockRechargeService(new LlmPayDbContext(options), DataProtectionProvider.Create("LLMPay.Tests"));
+        return new MockRechargeService(new LlmPayDbContext(options), DataProtectionProvider.Create("LLMPay.Tests"), Array.Empty<INativePaymentGateway>(), new ConfigurationBuilder().Build());
     }
 
     [Fact]

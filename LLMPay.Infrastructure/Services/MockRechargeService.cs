@@ -6,19 +6,23 @@ using LLMPay.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using System.Text.Json;
+using LLMPay.Core.Services;
+using Microsoft.Extensions.Configuration;
 
 namespace LLMPay.Infrastructure.Services;
 
 public record MockAccountResult(bool Valid, string? Email, string? AccountId, string Message);
-public record MockRechargeView(Guid Id, string OrderNumber, string ContactEmail, string TargetEmail, string TargetName, string MockAccountId, string Plan, string PaymentProvider, decimal Amount, string Status, string? CheckoutSessionId, string? SubscriptionId, string? RechargeCode, string? GuestAccessToken, bool AccountProvisioned, DateTime CreatedAt, DateTime? CompletedAt);
+public record MockRechargeView(Guid Id, string OrderNumber, string ContactEmail, string TargetEmail, string TargetName, string MockAccountId, string Plan, string PaymentProvider, decimal Amount, string Status, string? CheckoutSessionId, string? PaymentCodeUrl, decimal? PaymentAmountCny, string PaymentMode, DateTime? PaymentExpiresAt, string? SubscriptionId, string? RechargeCode, string? GuestAccessToken, bool AccountProvisioned, DateTime CreatedAt, DateTime? CompletedAt);
 
 public partial class MockRechargeService
 {
     private readonly LlmPayDbContext _db;
     private readonly IDataProtector _protector;
-    public MockRechargeService(LlmPayDbContext db, IDataProtectionProvider protection)
+    private readonly IReadOnlyDictionary<string,INativePaymentGateway> _gateways;
+    private readonly IConfiguration _configuration;
+    public MockRechargeService(LlmPayDbContext db, IDataProtectionProvider protection, IEnumerable<INativePaymentGateway> gateways, IConfiguration configuration)
     {
-        _db = db; _protector = protection.CreateProtector("LLMPay.MockRecharge.Code.v1");
+        _db = db; _protector = protection.CreateProtector("LLMPay.MockRecharge.Code.v1"); _gateways=gateways.ToDictionary(x=>x.Provider,StringComparer.OrdinalIgnoreCase); _configuration=configuration;
     }
 
     /// <summary>只接受本系统定义的伪造格式。JWT、Bearer 和真实样式凭据均拒绝。</summary>
@@ -69,7 +73,20 @@ public partial class MockRechargeService
     {
         var order = await Owned(userId, id, guestToken);
         if (order.Status != MockRechargeStatus.Created) throw new InvalidOperationException("当前状态不能创建 Checkout");
-        order.MockCheckoutSessionId = $"cs_test_mock_{Guid.NewGuid():N}";
+        var useGateway=bool.TryParse(_configuration["Payments:UseGatewaySandbox"],out var enabled)&&enabled;
+        if(useGateway)
+        {
+            if(!_gateways.TryGetValue(order.PaymentProvider,out var gateway)||!gateway.IsConfigured)throw new InvalidOperationException($"{order.PaymentProvider} 支付环境尚未配置");
+            var baseUrl=(_configuration["PublicBaseUrl"]??string.Empty).TrimEnd('/');
+            if(string.IsNullOrWhiteSpace(baseUrl)||baseUrl.Contains("localhost",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("支付回调需要配置公网 HTTPS PublicBaseUrl");
+            var amountSetting=_configuration[$"Payments:{(order.PaymentProvider=="wechat"?"WeChat":"Alipay")}:SandboxAmountCny"];
+            var testAmount=decimal.TryParse(amountSetting,System.Globalization.NumberStyles.Number,System.Globalization.CultureInfo.InvariantCulture,out var configuredAmount)?configuredAmount:0.01m;
+            var notifyUrl=$"{baseUrl}/api/payment-notify/{order.PaymentProvider}";
+            var result=await gateway.CreateAsync(new(order.PaymentProvider,order.OrderNumber,$"{order.Plan} 充值测试",testAmount,notifyUrl));
+            if(!result.Success)throw new InvalidOperationException(result.Error??"支付下单失败");
+            order.MockCheckoutSessionId=result.GatewayTradeNo;order.PaymentCodeUrl=result.CodeUrl;order.PaymentAmountCny=testAmount;order.PaymentMode=result.Mode;order.PaymentExpiresAt=DateTime.UtcNow.AddMinutes(15);
+        }
+        else { order.MockCheckoutSessionId = $"cs_test_local_{Guid.NewGuid():N}"; order.PaymentMode="local"; order.PaymentAmountCny=null; }
         order.Status = MockRechargeStatus.CheckoutCreated; await _db.SaveChangesAsync(); return View(order);
     }
 
@@ -82,6 +99,16 @@ public partial class MockRechargeService
         order.RechargeCodeSuffix = rechargeCode[^4..];
         order.RechargeCodeProtected = _protector.Protect(rechargeCode);
         order.Status = MockRechargeStatus.PaymentConfirmed; await _db.SaveChangesAsync(); return View(order);
+    }
+
+    public async Task<bool> ConfirmGatewayPaymentAsync(string orderNumber,string gatewayTradeNo,decimal? amountCny)
+    {
+        var order=await _db.MockRechargeOrders.FirstOrDefaultAsync(x=>x.OrderNumber==orderNumber);
+        if(order is null)return false;
+        if(order.Status is MockRechargeStatus.PaymentConfirmed or MockRechargeStatus.CardVerified or MockRechargeStatus.AccountVerified or MockRechargeStatus.AccountConfirmed or MockRechargeStatus.SubscriptionActivated)return true;
+        if(order.Status!=MockRechargeStatus.CheckoutCreated)return false;
+        if(order.PaymentAmountCny.HasValue&&(!amountCny.HasValue||order.PaymentAmountCny.Value!=amountCny.Value))return false;
+        var rechargeCode=RechargeCardService.GenerateCode();order.RechargeCodeHash=Hash(rechargeCode);order.RechargeCodeSuffix=rechargeCode[^4..];order.RechargeCodeProtected=_protector.Protect(rechargeCode);order.PaymentGatewayTradeNo=gatewayTradeNo;order.Status=MockRechargeStatus.PaymentConfirmed;await _db.SaveChangesAsync();return true;
     }
 
     public async Task<MockRechargeView> VerifyCardAsync(Guid? userId, Guid id, string? guestToken, string rechargeCode)
@@ -154,6 +181,8 @@ public partial class MockRechargeService
         return View(order);
     }
 
+    public Task<Guid?> FindIdByOrderNumberAsync(string orderNumber) => _db.MockRechargeOrders.AsNoTracking().Where(x=>x.OrderNumber==orderNumber).Select(x=>(Guid?)x.Id).FirstOrDefaultAsync();
+
     public async Task<IReadOnlyList<MockRechargeView>> ListAsync(Guid userId)
     {
         var orders = await _db.MockRechargeOrders.AsNoTracking().Where(x => x.UserId == userId)
@@ -186,7 +215,7 @@ public partial class MockRechargeService
     {
         string? code = null;
         if ((x.Status is MockRechargeStatus.PaymentConfirmed or MockRechargeStatus.CardVerified or MockRechargeStatus.AccountVerified or MockRechargeStatus.AccountConfirmed or MockRechargeStatus.SubscriptionActivated) && !string.IsNullOrEmpty(x.RechargeCodeProtected)) code = _protector.Unprotect(x.RechargeCodeProtected);
-        return new(x.Id, x.OrderNumber, x.ContactEmail, x.TargetEmail, x.TargetName, x.MockAccountId, x.Plan, x.PaymentProvider, x.Amount, x.Status.ToString(), x.MockCheckoutSessionId, x.MockSubscriptionId, code, guestAccessToken, x.AccountProvisioned, x.CreatedAt, x.CompletedAt);
+        return new(x.Id, x.OrderNumber, x.ContactEmail, x.TargetEmail, x.TargetName, x.MockAccountId, x.Plan, x.PaymentProvider, x.Amount, x.Status.ToString(), x.MockCheckoutSessionId, x.PaymentCodeUrl, x.PaymentAmountCny, x.PaymentMode, x.PaymentExpiresAt, x.MockSubscriptionId, code, guestAccessToken, x.AccountProvisioned, x.CreatedAt, x.CompletedAt);
     }
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(RechargeCardService.Normalize(value)))).ToLowerInvariant();
     private static string HashRaw(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();

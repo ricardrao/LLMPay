@@ -17,6 +17,11 @@ public class MockRechargeOrder
     public decimal Amount { get; set; }
     public MockRechargeStatus Status { get; set; } = MockRechargeStatus.Created;
     public string? MockCheckoutSessionId { get; set; }
+    public string? PaymentCodeUrl { get; set; }
+    public string? PaymentGatewayTradeNo { get; set; }
+    public decimal? PaymentAmountCny { get; set; }
+    public string PaymentMode { get; set; } = "local";
+    public DateTime? PaymentExpiresAt { get; set; }
     public string? MockSubscriptionId { get; set; }
     public string? RechargeCodeHash { get; set; }
     public string? RechargeCodeSuffix { get; set; }
