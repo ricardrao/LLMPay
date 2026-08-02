@@ -11,6 +11,7 @@ public interface IUserService
     Task<User?> GetUserAsync(Guid userId);
     Task<(bool Success, string Message)> UpdateBalanceAsync(Guid userId, decimal amount, bool isDeduction = false);
     Task<(bool Success, string Message)> UpdateUserStatusAsync(Guid userId, UserStatus status);
+    Task<(bool Success, string Message)> SetInitialPasswordAsync(string email, string token, string password);
 }
 
 public class UserService : IUserService
@@ -154,5 +155,16 @@ public class UserService : IUserService
             _logger.LogError(ex, "Error updating user status: {UserId}", userId);
             return (false, "Failed to update user status");
         }
+    }
+
+    public async Task<(bool Success, string Message)> SetInitialPasswordAsync(string email, string token, string password)
+    {
+        if (password.Length < 8) return (false, "密码至少需要 8 位");
+        var user = await _userRepository.GetByEmailAsync(email.Trim().ToLowerInvariant());
+        if (user is null || user.PasswordSetupExpiresAt < DateTime.UtcNow || string.IsNullOrEmpty(user.PasswordSetupTokenHash)) return (false, "设置密码链接无效或已过期");
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+        if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(System.Text.Encoding.ASCII.GetBytes(hash), System.Text.Encoding.ASCII.GetBytes(user.PasswordSetupTokenHash))) return (false, "设置密码链接无效或已过期");
+        user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password); user.PasswordSetupTokenHash = null; user.PasswordSetupExpiresAt = null; user.EmailVerified = true;
+        await _userRepository.UpdateAsync(user); return (true, "密码设置成功");
     }
 }

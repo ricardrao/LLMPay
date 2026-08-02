@@ -35,6 +35,7 @@ public class LlmPayDbContext : DbContext
             entity.Property(e => e.Balance).HasPrecision(18, 6);
             entity.Property(e => e.Status).HasConversion<int>();
             entity.Property(e => e.Role).HasConversion<int>();
+            entity.Property(e => e.PasswordSetupTokenHash).HasMaxLength(64);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("now() at time zone 'UTC'");
             
             // 导航属性配置
@@ -70,7 +71,6 @@ public class LlmPayDbContext : DbContext
             entity.Property(e => e.ClientIp).HasMaxLength(45);
             entity.Property(e => e.UserAgent).HasMaxLength(2000);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("now() at time zone 'UTC'");
-            entity.Property(e => e.PasswordSetupTokenHash).HasMaxLength(64);
         });
 
         modelBuilder.Entity<CreditTransaction>(entity =>

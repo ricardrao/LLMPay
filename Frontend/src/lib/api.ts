@@ -9,6 +9,8 @@ export const tokenStore = {
   set: (value: string) => localStorage.setItem(TOKEN_KEY, value),
   clear: () => localStorage.removeItem(TOKEN_KEY)
 }
+const GUEST_KEY = 'llmpay_guest_order_access'
+export const guestOrderStore = { get: () => localStorage.getItem(GUEST_KEY), set: (value: string) => localStorage.setItem(GUEST_KEY, value), clear: () => localStorage.removeItem(GUEST_KEY) }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = tokenStore.get()
@@ -17,6 +19,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers: {
       ...(init.body ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(!token && guestOrderStore.get() ? { 'X-Order-Access': guestOrderStore.get()! } : {}),
       ...init.headers
     }
   })

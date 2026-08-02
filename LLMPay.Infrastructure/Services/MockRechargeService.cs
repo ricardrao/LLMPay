@@ -138,10 +138,10 @@ public partial class MockRechargeService
             if (account is null)
             {
                 account = new User { Id = Guid.NewGuid(), Email = order.ContactEmail, Nickname = order.ContactEmail.Split('@')[0], PasswordHash = BCrypt.Net.BCrypt.HashPassword(Convert.ToHexString(RandomNumberGenerator.GetBytes(32))), Status = UserStatus.Active, EmailVerified = false };
+                account.PasswordSetupTokenHash = HashRaw(setupToken); account.PasswordSetupExpiresAt = DateTime.UtcNow.AddHours(24);
                 _db.Users.Add(account);
             }
-            account.PasswordSetupTokenHash = HashRaw(setupToken); account.PasswordSetupExpiresAt = DateTime.UtcNow.AddHours(24);
-            order.UserId = account.Id; order.AccountProvisioned = true;
+            order.UserId = account.Id; order.AccountProvisioned = isNew;
             _db.EmailOutbox.Add(new EmailOutbox { Id = Guid.NewGuid(), ToEmail = order.ContactEmail, Subject = isNew ? "设置你的 LLMPay 登录密码" : "LLMPay 充值订单已完成", Body = isNew ? $"你的订单 {order.OrderNumber} 已完成。请在 24 小时内设置密码：http://127.0.0.1:5173/set-password?token={setupToken}&email={Uri.EscapeDataString(order.ContactEmail)}" : $"你的订单 {order.OrderNumber} 已完成，可登录账户查看。" });
         }
         await _db.SaveChangesAsync(); return View(order);
@@ -158,7 +158,7 @@ public partial class MockRechargeService
     {
         var orders = await _db.MockRechargeOrders.AsNoTracking().Where(x => x.UserId == userId)
             .OrderByDescending(x => x.CreatedAt).Take(100).ToListAsync();
-        return orders.Select(View).ToList();
+        return orders.Select(x => View(x)).ToList();
     }
 
     public async Task<MockRechargeView> CancelAsync(Guid? userId, Guid id, string? guestToken)

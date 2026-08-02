@@ -1,17 +1,18 @@
-import { ArrowRight, CheckCircle2, CircleDollarSign, Eye, EyeOff, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, ShieldCheck, Sparkles, Zap } from 'lucide-react'
 import { FormEvent, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
+import { api } from '../lib/api'
 
 function AuthFrame({ children, title, subtitle }: { children: React.ReactNode; title: string; subtitle: string }) {
   return <div className="auth-page">
-    <section className="auth-story">
-      <div className="brand light"><span className="brand-mark"><CircleDollarSign size={22} /></span><span>LLM<b>Pay</b></span></div>
-      <div className="story-copy"><span className="eyebrow"><Sparkles size={14} /> AI 服务余额管理平台</span><h1>充值清晰透明，<br />每笔消费都有迹可循。</h1><p>一个账户管理余额、充值订单和 API 消费，让 AI 服务使用更简单。</p>
-        <div className="trust-row"><span><ShieldCheck />支付信息由 Stripe 安全处理</span><span><CheckCircle2 />余额流水实时可查</span></div>
+    <header className="auth-nav"><a href="/app/cards"><Zap/><span>LLM<b>Pay</b></span></a><a href="/app/cards"><ArrowLeft/>返回充值首页</a></header>
+    <main className="auth-shell"><section className="auth-story">
+      <div className="story-copy"><span className="eyebrow"><Sparkles size={14} /> 充值记录，随时可查</span><h1>管理你的订单，<br/><em>不用从头再来。</em></h1><p>登录后可查看历史充值、继续处理中断的订单，并及时确认每一笔结果。</p>
+        <div className="trust-row"><span><ShieldCheck />订单信息安全关联</span><span><CheckCircle2 />中断流程随时继续</span></div>
       </div>
-      <p className="auth-note">平台余额不等同于 OpenAI 官方账户余额</p>
+      <div className="auth-order-preview"><span>最近订单</span><div><i><Zap/></i><p>ChatGPT Plus<b>充值已完成</b></p><strong>US$20</strong></div></div>
     </section>
-    <section className="auth-panel"><div className="auth-card"><div className="auth-heading"><h2>{title}</h2><p>{subtitle}</p></div>{children}</div></section>
+    <section className="auth-panel"><div className="auth-card"><div className="auth-heading"><span>ACCOUNT</span><h2>{title}</h2><p>{subtitle}</p></div>{children}<a className="auth-home-link" href="/app/cards">暂不登录，直接充值 <ArrowRight/></a></div></section></main>
   </div>
 }
 
@@ -25,7 +26,7 @@ export function LoginPage() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
   if (user) { location.replace(user.role === 'Admin' ? '/admin' : '/app'); return null }
   const submit = async (e: FormEvent) => { e.preventDefault(); setError(''); setBusy(true); try { const result = await login(email, password); location.assign(result.role === 'Admin' ? '/admin' : '/app') } catch (ex) { setError((ex as Error).message) } finally { setBusy(false) } }
-  return <AuthFrame title="欢迎回来" subtitle="登录后继续管理你的余额和订单">
+  return <AuthFrame title="欢迎回来" subtitle="登录后查看历史充值和继续未完成订单">
     <form onSubmit={submit} className="form-stack"><label>邮箱地址<input type="email" placeholder="name@example.com" value={email} onChange={e => setEmail(e.target.value)} required /></label><label>登录密码<PasswordInput value={password} onChange={setPassword} /></label>{error && <div className="form-error">{error}</div>}<button className="primary-button" disabled={busy}>{busy ? '正在登录…' : <>登录账户 <ArrowRight size={17} /></>}</button></form>
     <p className="auth-switch">还没有账户？<a href="/register">免费注册</a></p>
   </AuthFrame>
@@ -36,8 +37,15 @@ export function RegisterPage() {
   const [form, setForm] = useState({ nickname: '', email: '', password: '' }); const [error, setError] = useState(''); const [busy, setBusy] = useState(false)
   if (user) { location.replace('/app'); return null }
   const submit = async (e: FormEvent) => { e.preventDefault(); setError(''); setBusy(true); try { await register(form.email, form.password, form.nickname); await login(form.email, form.password); location.assign('/app') } catch (ex) { setError((ex as Error).message) } finally { setBusy(false) } }
-  return <AuthFrame title="创建账户" subtitle="一分钟开始使用 LLMPay">
+  return <AuthFrame title="创建账户" subtitle="创建后可统一查看和管理充值订单">
     <form onSubmit={submit} className="form-stack"><label>称呼<input placeholder="例如：小林" value={form.nickname} onChange={e => setForm({ ...form, nickname: e.target.value })} maxLength={100} /></label><label>邮箱地址<input type="email" placeholder="name@example.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required /></label><label>设置密码<PasswordInput value={form.password} onChange={password => setForm({ ...form, password })} /></label>{error && <div className="form-error">{error}</div>}<button className="primary-button" disabled={busy}>{busy ? '正在创建…' : <>创建账户 <ArrowRight size={17} /></>}</button></form>
     <p className="terms">注册即表示你同意平台服务条款和隐私政策。</p><p className="auth-switch">已有账户？<a href="/login">直接登录</a></p>
   </AuthFrame>
+}
+
+export function SetPasswordPage() {
+  const params=new URLSearchParams(location.search); const email=params.get('email')||''; const token=params.get('token')||''
+  const [password,setPassword]=useState(''); const [error,setError]=useState(''); const [done,setDone]=useState(false); const [busy,setBusy]=useState(false)
+  const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{await api('/api/auth/set-password',{method:'POST',body:JSON.stringify({email,token,password})});setDone(true)}catch(ex){setError((ex as Error).message)}finally{setBusy(false)}}
+  return <AuthFrame title="设置登录密码" subtitle={`为 ${email||'你的账户'} 设置密码`} >{done?<div className="empty-state"><CheckCircle2/><h4>密码设置成功</h4><a className="primary-button" href="/login">前往登录</a></div>:<form onSubmit={submit} className="form-stack"><label>新密码<PasswordInput value={password} onChange={setPassword}/></label>{error&&<div className="form-error">{error}</div>}<button className="primary-button" disabled={busy||!email||!token}>{busy?'正在设置…':'设置密码'}</button></form>}</AuthFrame>
 }

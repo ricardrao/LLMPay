@@ -38,6 +38,13 @@ public class AuthController : ControllerBase
         return Ok(new { token = CreateToken(result.User!), user = ToUserResponse(result.User!) });
     }
 
+    [HttpPost("set-password")]
+    public async Task<IActionResult> SetPassword(SetPasswordRequest request)
+    {
+        var result = await _users.SetInitialPasswordAsync(request.Email, request.Token, request.Password);
+        return result.Success ? Ok(new { result.Message }) : BadRequest(new { result.Message });
+    }
+
     [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> Me()
@@ -71,4 +78,10 @@ public class LoginRequest
 {
     [Required, EmailAddress] public string Email { get; set; } = string.Empty;
     [Required] public string Password { get; set; } = string.Empty;
+}
+public class SetPasswordRequest
+{
+    [Required, EmailAddress] public string Email { get; set; } = string.Empty;
+    [Required] public string Token { get; set; } = string.Empty;
+    [Required, MinLength(8)] public string Password { get; set; } = string.Empty;
 }

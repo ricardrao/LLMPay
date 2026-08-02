@@ -5,7 +5,7 @@ type AuthValue = {
   user: User | null; loading: boolean;
   login: (email: string, password: string) => Promise<User>;
   register: (email: string, password: string, nickname: string) => Promise<void>;
-  refresh: () => Promise<void>; logout: () => void
+  refresh: () => Promise<void>; logout: (redirectTo?: string) => void
 }
 
 const AuthContext = createContext<AuthValue | null>(null)
@@ -27,7 +27,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (email: string, password: string, nickname: string) => {
     await api('/api/auth/register', { method: 'POST', body: JSON.stringify({ email, password, nickname }) })
   }
-  const logout = () => { tokenStore.clear(); setUser(null); location.assign('/login') }
+  const logout = (redirectTo = '/login') => {
+    tokenStore.clear()
+    localStorage.removeItem('llmpay_guest_order_access')
+    localStorage.removeItem('llmpay_mock_recharge_order')
+    setUser(null)
+    location.replace(redirectTo)
+  }
 
   return <AuthContext.Provider value={{ user, loading, login, register, refresh, logout }}>{children}</AuthContext.Provider>
 }

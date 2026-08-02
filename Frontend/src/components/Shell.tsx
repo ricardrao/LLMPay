@@ -30,7 +30,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <div className="sidebar-user">
         <div className="avatar">{(user?.nickname || user?.email || 'U').slice(0, 1).toUpperCase()}</div>
         <div><strong>{user?.nickname || '用户'}</strong><span>{user?.role === 'Admin' ? '平台管理员' : user?.email}</span></div>
-        <button onClick={logout} title="退出"><LogOut size={17} /></button>
+        <button onClick={() => logout()} title="退出"><LogOut size={17} /></button>
       </div>
     </aside>
     {open && <button className="scrim" onClick={() => setOpen(false)} aria-label="关闭菜单" />}
