@@ -1,0 +1,91 @@
+import { ArrowLeft, ArrowRight, BadgeCheck, Check, CheckCircle2, Copy, CreditCard, ExternalLink, KeyRound, LoaderCircle, LockKeyhole, QrCode, ShieldCheck, Smartphone, Sparkles, TimerReset, WalletCards, Zap } from 'lucide-react'
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
+import { api, dateTime, money } from '../lib/api'
+import { useAuth } from '../auth/AuthContext'
+
+type PlanId = 'Plus'|'Credit100'|'Pro'
+type Provider = 'wechat'|'alipay'
+type RechargeOrder = { id:string; orderNumber:string; targetEmail:string; targetName:string; plan:PlanId; paymentProvider:Provider; amount:number; status:string; rechargeCode?:string; createdAt:string; completedAt?:string }
+const ORDER_KEY = 'llmpay_mock_recharge_order'
+const plans = [
+  { id:'Plus' as const, name:'ChatGPT Plus', price:20, eyebrow:'PLUS · 1 MONTH', desc:'适合日常对话、写作与学习', badge:'最受欢迎' },
+  { id:'Credit100' as const, name:'ChatGPT $100', price:100, eyebrow:'FLEXIBLE CREDIT', desc:'适合灵活测试充值流程', badge:'灵活面额' },
+  { id:'Pro' as const, name:'ChatGPT Pro', price:200, eyebrow:'PRO · 1 MONTH', desc:'适合高频和重度 AI 使用', badge:'专业版' }
+]
+const planName = (id:PlanId) => plans.find(x => x.id === id)?.name || id
+const routeFor = (order:RechargeOrder) => order.status === 'Created' || order.status === 'CheckoutCreated' ? 'payment' : order.status === 'PaymentConfirmed' ? 'verify' : 'recharge'
+const go = (page:string, id?:string) => location.assign(`/app/cards${page ? `/${page}` : ''}${id ? `?id=${id}` : ''}`)
+
+export function CardFlowPage() {
+  const page = location.pathname.split('/').filter(Boolean)[2] || 'home'
+  const id = new URLSearchParams(location.search).get('id') || undefined
+  if (page === 'payment') return <OrderLoader id={id}>{order => <PaymentPage order={order}/>}</OrderLoader>
+  if (page === 'verify') return <OrderLoader id={id}>{order => <VerifyPage order={order}/>}</OrderLoader>
+  if (page === 'recharge') return <OrderLoader id={id}>{order => <RechargePage order={order}/>}</OrderLoader>
+  return <StorePage/>
+}
+
+function Frame({ step, children }: { step:number; children:ReactNode }) {
+  const { user } = useAuth()
+  return <div className="recharge-site">
+    <div className="test-environment"><ShieldCheck/> 测试环境 · 不产生真实扣款 · 不连接真实 ChatGPT 服务</div>
+    <header className="recharge-nav"><a href="/app/cards"><Zap/><span>LLM<b>Pay</b></span></a><nav><a href="/app/cards">充值套餐</a><a href="/app/orders">我的订单</a><a href="/app">账户中心</a></nav><span>{user?.nickname || user?.email}</span></header>
+    {step > 0 && <div className="page-stepper">{['选择套餐','扫码支付','验证卡密','提交充值'].map((label,index) => <div className={step > index + 1 ? 'done' : step === index + 1 ? 'active' : ''} key={label}><i>{step > index + 1 ? <Check/> : index + 1}</i><span>{label}</span></div>)}</div>}
+    {children}
+    <footer className="recharge-footer"><a href="/app/cards"><Zap/> LLMPay</a><p>本地完整流程测试环境</p><nav><a href="/app/orders">订单查询</a><a href="/app">账户中心</a></nav></footer>
+  </div>
+}
+
+function StorePage() {
+  const [plan,setPlan] = useState<PlanId>('Plus'); const [provider,setProvider] = useState<Provider>('wechat'); const [orders,setOrders] = useState<RechargeOrder[]>([]); const [busy,setBusy] = useState(false); const [error,setError] = useState('')
+  useEffect(() => { api<RechargeOrder[]>('/api/mock-recharge/orders').then(setOrders).catch(()=>setOrders([])) },[])
+  const current = plans.find(x => x.id === plan)!
+  const start = async () => { setBusy(true); setError(''); try { const created=await api<RechargeOrder>('/api/mock-recharge/orders',{method:'POST',body:JSON.stringify({plan,paymentProvider:provider})}); const checkout=await api<RechargeOrder>(`/api/mock-recharge/orders/${created.id}/checkout`,{method:'POST'}); localStorage.setItem(ORDER_KEY,checkout.id); go('payment',checkout.id) } catch(ex){setError((ex as Error).message);setBusy(false)} }
+  return <Frame step={1}><main className="recharge-home refined-home">
+    <section className="refined-hero"><div className="refined-copy"><span className="refined-eyebrow"><Sparkles/> 简单、安全、全程可查</span><h1>轻松开通你的<br/><em>ChatGPT 会员</em></h1><p>无需准备海外银行卡。选择套餐并扫码支付，跟随清晰的页面指引完成充值。</p><div className="refined-actions"><a href="#plans">选择套餐 <ArrowRight/></a><a href="/app/orders">查看订单</a></div><div className="refined-trust"><span><ShieldCheck/>过程透明</span><span><TimerReset/>中断可继续</span><span><BadgeCheck/>结果可追溯</span></div></div><div className="chat-visual" aria-hidden="true"><div className="visual-window"><header><i/><i/><i/><span>ChatGPT</span></header><main><div className="ai-orb"><Sparkles/></div><p>今天有什么可以帮你？</p><div className="prompt-line"><span>发送消息</span><i><ArrowRight/></i></div></main></div><div className="float-pill pill-one"><CheckCircle2/> 订单已确认</div><div className="float-pill pill-two"><Zap/> 即将开通</div></div></section>
+    {orders.length > 0 && <aside className="resume-order"><div><span>继续上次订单</span><b>{planName(orders[0].plan)} · {orders[0].targetEmail.startsWith('pending@')?'账户待确认':orders[0].targetEmail}</b></div><button onClick={()=>go(routeFor(orders[0]),orders[0].id)}>继续处理 <ArrowRight/></button></aside>}
+    <section className="product-section refined-products" id="plans"><header><span>选择方案</span><h2>找到适合你的套餐</h2><p>三种简单选择，价格清晰，没有隐藏步骤。</p></header><div className="product-grid">{plans.map(item=><button className={plan===item.id?'active':''} onClick={()=>setPlan(item.id)} key={item.id}><div className="plan-top"><span>{item.eyebrow}</span>{plan===item.id&&<i><Check/></i>}</div><h3>{item.name}</h3><p>{item.desc}</p><strong>{money(item.price,'usd')}<small>一次性支付</small></strong><em>{item.badge}</em></button>)}</div></section>
+    <section className="refined-checkout"><div className="checkout-choice"><span>付款方式</span><div className="provider-choice"><button className={provider==='wechat'?'active':''} onClick={()=>setProvider('wechat')}><i>微</i><b>微信支付<small>推荐</small></b><CheckCircle2/></button><button className={provider==='alipay'?'active':''} onClick={()=>setProvider('alipay')}><i>支</i><b>支付宝<small>扫码支付</small></b><CheckCircle2/></button></div></div><div className="checkout-total"><p><span>{current.name}</span><strong>{money(current.price,'usd')}</strong></p>{error&&<div className="flow-error">{error}</div>}<button onClick={()=>void start()} disabled={busy}>{busy?'正在创建订单…':<>继续支付 <ArrowRight/></>}</button><small>测试环境，不会产生真实扣款</small></div></section>
+    <section className="refined-guide"><header><span>充值流程</span><h2>每一步，都清清楚楚</h2></header><div>{[['01','选择套餐','挑选方案与支付方式'],['02','扫码支付','完成测试订单支付'],['03','验证卡密','复制卡密并完成验证'],['04','提交充值','核对账户并查看结果']].map(x=><article key={x[0]}><span>{x[0]}</span><div><h3>{x[1]}</h3><p>{x[2]}</p></div></article>)}</div></section>
+  </main></Frame>
+}
+
+function OrderLoader({id,children}:{id?:string;children:(order:RechargeOrder)=>ReactNode}) {
+  const [order,setOrder]=useState<RechargeOrder|null>(null); const [error,setError]=useState('')
+  useEffect(()=>{if(!id){setError('缺少订单编号');return} api<RechargeOrder>(`/api/mock-recharge/orders/${id}`).then(setOrder).catch(ex=>setError((ex as Error).message))},[id])
+  if(error) return <Frame step={0}><main className="flow-message"><h2>无法打开订单</h2><p>{error}</p><a href="/app/cards">返回套餐页</a></main></Frame>
+  if(!order) return <div className="route-loader"><LoaderCircle/>正在读取订单…</div>
+  return <>{children(order)}</>
+}
+
+function PaymentPage({order:initial}:{order:RechargeOrder}) {
+  const [order,setOrder]=useState(initial); const [busy,setBusy]=useState(false); const [error,setError]=useState('')
+  useEffect(()=>{if(order.status!=='Created')return;setBusy(true);api<RechargeOrder>(`/api/mock-recharge/orders/${order.id}/checkout`,{method:'POST'}).then(setOrder).catch(ex=>setError((ex as Error).message)).finally(()=>setBusy(false))},[order.id,order.status])
+  const pay=async()=>{setBusy(true);setError('');try{const paid=await api<RechargeOrder>(`/api/mock-recharge/orders/${order.id}/payment`,{method:'POST'});setOrder(paid);setTimeout(()=>go('verify',paid.id),700)}catch(ex){setError((ex as Error).message);setBusy(false)}}
+  if(order.status!=='CheckoutCreated') return <Frame step={2}><RedirectCard order={order}/></Frame>
+  return <Frame step={2}><main className="flow-page"><a className="flow-back" href="/app/cards"><ArrowLeft/>返回修改套餐</a><div className="payment-layout"><section><span className="flow-kicker">STEP 02 · SCAN TO PAY</span><h1>扫码完成支付</h1><p>请使用{order.paymentProvider==='wechat'?'微信':'支付宝'}扫描二维码。支付确认后将自动生成充值卡密。</p><div className={`payment-qr ${order.paymentProvider}`}><header><i>{order.paymentProvider==='wechat'?'微':'支'}</i><div><b>{order.paymentProvider==='wechat'?'微信支付':'支付宝'}</b><span>测试收银台</span></div></header><QrCode/><strong>{money(order.amount,'usd')}</strong><small>请勿关闭当前页面</small></div><div className="payment-wait"><i/><span>正在等待支付结果</span></div></section><aside className="flow-order-card"><h2>订单摘要</h2><div><span>订单编号</span><b>{order.orderNumber}</b></div><div><span>充值产品</span><b>{planName(order.plan)}</b></div><div><span>支付方式</span><b>{order.paymentProvider==='wechat'?'微信支付':'支付宝'}</b></div><div className="total"><span>应付金额</span><strong>{money(order.amount,'usd')}</strong></div>{error&&<p className="flow-error">{error}</p>}<button onClick={()=>void pay()} disabled={busy}><CheckCircle2/>{busy?'正在确认支付…':'我已完成支付'}</button><small><ShieldCheck/>测试按钮用于模拟支付回调</small></aside></div></main></Frame>
+}
+
+function VerifyPage({order:initial}:{order:RechargeOrder}) {
+  const [order,setOrder]=useState(initial); const [code,setCode]=useState(initial.rechargeCode||''); const [copied,setCopied]=useState(false); const [busy,setBusy]=useState(false); const [error,setError]=useState('')
+  const copy=async()=>{await navigator.clipboard.writeText(order.rechargeCode||'');setCopied(true)}
+  const verify=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{const result=await api<RechargeOrder>(`/api/mock-recharge/orders/${order.id}/verify-card`,{method:'POST',body:JSON.stringify({rechargeCode:code})});setOrder(result);setTimeout(()=>go('recharge',result.id),650)}catch(ex){setError((ex as Error).message);setBusy(false)}}
+  if(order.status!=='PaymentConfirmed') return <Frame step={3}><RedirectCard order={order}/></Frame>
+  return <Frame step={3}><main className="flow-page narrow-flow"><a className="flow-back" href={`/app/cards/payment?id=${order.id}`}><ArrowLeft/>返回支付页</a><section className="verify-card"><span className="flow-kicker">STEP 03 · VERIFY CARD</span><div className="success-mark"><Check/></div><h1>支付成功，卡密已生成</h1><p>请复制并妥善保存卡密，然后在下方输入完成验证。</p><div className="issued-code-box"><span>本次充值卡密</span><code>{order.rechargeCode}</code><button onClick={()=>void copy()}><Copy/>{copied?'已复制':'复制卡密'}</button></div><form onSubmit={verify}><label>输入充值卡密<div><KeyRound/><input value={code} onChange={e=>setCode(e.target.value.toUpperCase())} placeholder="请输入上方卡密" autoFocus/></div></label><p><ShieldCheck/>卡密仅可验证一次，验证后进入充值信息步骤</p>{error&&<div className="flow-error">{error}</div>}<button disabled={busy||!code}><LockKeyhole/>{busy?'正在验证…':'验证卡密并继续'}</button></form><footer><span>订单 {order.orderNumber}</span><a href="/app/orders">稍后处理，在订单中心继续</a></footer></section></main></Frame>
+}
+
+function RechargePage({order:initial}:{order:RechargeOrder}) {
+  const [order,setOrder]=useState(initial); const [email,setEmail]=useState(initial.targetEmail.startsWith('pending@')?'test-user@example.com':initial.targetEmail); const [sessionJson,setSessionJson]=useState(''); const [copied,setCopied]=useState(false); const [guideStep,setGuideStep]=useState<1|2|3>(1); const [busy,setBusy]=useState(false); const [error,setError]=useState(''); const [seconds,setSeconds]=useState(12); const [progress,setProgress]=useState(8); const activated=useRef(false)
+  const generate=async()=>{setGuideStep(2);setBusy(true);setError('');try{const value=await api<{sessionJson:string}>('/api/mock-recharge/token',{method:'POST',body:JSON.stringify({email})});setSessionJson(value.sessionJson)}catch(ex){setError((ex as Error).message)}finally{setBusy(false)}}
+  const copy=async()=>{await navigator.clipboard.writeText(sessionJson);setCopied(true);setGuideStep(3)}
+  const submit=async(e:FormEvent)=>{e.preventDefault();setBusy(true);setError('');try{setOrder(await api<RechargeOrder>(`/api/mock-recharge/orders/${order.id}/verify-account`,{method:'POST',body:JSON.stringify({sessionJson})}));setSessionJson('')}catch(ex){setError((ex as Error).message)}finally{setBusy(false)}}
+  const confirm=async()=>{setBusy(true);setError('');try{setOrder(await api<RechargeOrder>(`/api/mock-recharge/orders/${order.id}/confirm-account`,{method:'POST'}));setSeconds(12);setProgress(8)}catch(ex){setError((ex as Error).message)}finally{setBusy(false)}}
+  useEffect(()=>{if(order.status!=='AccountConfirmed')return;const timer=setInterval(()=>{setProgress(v=>Math.min(95,v+8));setSeconds(v=>{if(v<=1){clearInterval(timer);if(!activated.current){activated.current=true;api<RechargeOrder>(`/api/mock-recharge/orders/${order.id}/activate`,{method:'POST'}).then(setOrder).catch(ex=>setError((ex as Error).message))}return 0}return v-1})},1000);return()=>clearInterval(timer)},[order.status,order.id])
+  if(order.status==='SubscriptionActivated') return <Frame step={4}><main className="flow-page narrow-flow"><section className="recharge-success"><div><Check/></div><span>RECHARGE COMPLETED</span><h1>充值成功</h1><p>测试会员开通流程已经处理完成</p><section><label>充值账户<b>{order.targetEmail}</b></label><label>账户名称<b>{order.targetName}</b></label><label>充值套餐<b>{planName(order.plan)}</b></label><label>完成时间<b>{dateTime(order.completedAt)}</b></label><label>订单编号<b>{order.orderNumber}</b></label></section><div className="success-actions"><a href="https://chatgpt.com" target="_blank" rel="noreferrer">打开 ChatGPT <ExternalLink/></a><button onClick={()=>{localStorage.removeItem(ORDER_KEY);go('')}}>再来一单</button></div></section></main></Frame>
+  if(order.status==='AccountConfirmed') return <Frame step={4}><main className="flow-page narrow-flow"><section className="opening-progress"><LoaderCircle/><span>SUBMITTING RECHARGE</span><h1>{seconds>3?'正在为你的账户开通会员':'即将完成，请稍后'}</h1><p>正在提交，请稍等。通常需要等待 30–90 秒，请不要关闭本页面。</p><div><i style={{width:`${progress}%`}}/></div><section><span>{Math.round(progress)}%</span><b>{seconds>0?`预计还需要 ${seconds} 秒`:'即将完成'}</b></section><small>订单 {order.orderNumber}</small></section></main></Frame>
+  if(order.status==='AccountVerified') return <Frame step={4}><main className="flow-page narrow-flow"><section className="account-confirm"><div><BadgeCheck/></div><span className="flow-kicker">CONFIRM ACCOUNT</span><h1>确认充值账户</h1><p>请确认以下信息正确。提交后将进入开通流程。</p><section><label>账户邮箱<b>{order.targetEmail}</b></label><label>账户名称<b>{order.targetName}</b></label><label>充值套餐<b>{planName(order.plan)}</b></label><label>卡密尾号<b>•••• {order.rechargeCode?.slice(-4)}</b></label></section>{error&&<div className="flow-error">{error}</div>}<button onClick={()=>void confirm()} disabled={busy}>{busy?'正在提交…':'确认是这个账户，提交充值'}</button><button className="account-back" onClick={()=>location.reload()}>返回检查</button></section></main></Frame>
+  if(order.status!=='CardVerified') return <Frame step={4}><RedirectCard order={order}/></Frame>
+  return <Frame step={4}><main className="flow-page recharge-info-page"><header><span className="flow-kicker">STEP 04 · RECHARGE INFORMATION</span><h1>获取并提交充值信息</h1><p>依次确认账户、复制测试页面信息，然后填写邮箱与 Session JSON。</p></header><div className="recharge-info-layout"><section className="session-steps three-session-steps"><article className={guideStep===1?'active':guideStep>1?'done':''} onClick={()=>setGuideStep(1)}><i>1</i><div><h2>确认 ChatGPT 登录状态</h2><p>打开 ChatGPT，确认浏览器中显示的是准备测试的目标账户。</p><a href="https://chatgpt.com" target="_blank" rel="noreferrer" onClick={()=>setGuideStep(2)}>打开 ChatGPT <ExternalLink/></a></div></article><article className={guideStep===2?'active':guideStep>2?'done':''} onClick={()=>setGuideStep(2)}><i>2</i><div><h2>复制页面信息</h2><p>真实 Auth Session 包含登录凭据，本测试环境不会读取它。请使用本站本地工具生成相同结构的测试 JSON。</p><div className="session-source"><span>测试数据来源</span><code>LLMPay 本地 Session 工具</code></div><div className="session-source-actions"><button onClick={()=>void generate()} disabled={busy}><Sparkles/>{busy?'正在生成…':'生成测试 Session JSON'}</button><button className="copy-session" onClick={()=>void copy()} disabled={!sessionJson}><Copy/>{copied?'已复制':'复制 JSON'}</button></div></div></article><article className={guideStep===3?'active':''} onClick={()=>setGuideStep(3)}><i>3</i><div><h2>填写并提交充值信息</h2><p>在右侧同时填写测试目标账户邮箱和完整 Session JSON，核对后提交。</p></div></article></section><form className="session-submit" onSubmit={submit} onFocus={()=>setGuideStep(3)}><header><ShieldCheck/><div><b>充值信息验证</b><span>仅接受本站生成的测试 Session，不接收真实登录凭据</span></div></header><label>测试目标账户邮箱<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com" required/></label><label>Session JSON<textarea rows={10} value={sessionJson} onChange={e=>{setSessionJson(e.target.value);setGuideStep(3)}} placeholder="请粘贴本站生成的完整测试 JSON 内容"/></label><div><input type="checkbox" id="confirm-session" required/><label htmlFor="confirm-session">我已确认测试目标账户邮箱和充值套餐无误</label></div>{error&&<div className="flow-error">{error}</div>}<button disabled={busy||!sessionJson||!email}><LockKeyhole/>{busy?'正在验证账户…':'确认并提交充值'}</button><small><TimerReset/>提交后请保持页面开启，处理约需 30–90 秒</small></form></div></main></Frame>
+}
+
+function RedirectCard({order}:{order:RechargeOrder}) { if(order.status==='Cancelled')return <main className="flow-message"><TimerReset/><h2>订单已取消</h2><p>该订单不会继续处理，你可以返回套餐页重新下单。</p><button onClick={()=>go('')}>重新选择套餐 <ArrowRight/></button></main>; const page=routeFor(order); return <main className="flow-message"><CheckCircle2/><h2>订单已进入下一阶段</h2><p>当前订单状态已更新，请继续完成剩余步骤。</p><button onClick={()=>go(page,order.id)}>继续订单 <ArrowRight/></button></main> }
